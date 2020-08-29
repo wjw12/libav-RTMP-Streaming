@@ -8,4 +8,4 @@ build: clean
 	  -o /files/build/streamer
 
 run: build
-	docker run -w /files --rm -it -v `pwd`:/files leandromoreira/ffmpeg-devel /files/build/streamer 
+	docker run -w /files --rm --network host -it -v `pwd`:/files leandromoreira/ffmpeg-devel /files/build/streamer 

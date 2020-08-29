@@ -9,7 +9,7 @@ int main(int argc, char *argv[])
 		<< "Written by @juniorxsound <https://orfleisher.com>" << std::endl
 		<< std::endl;
 
-	Streamer streamer("samples/test.mp4", "rtmp://your_rtmp_streaming_endpoint");
+	Streamer streamer("samples/test.mp4", "rtmp://127.0.0.1/live");
 
 	return streamer.Stream();
 }
