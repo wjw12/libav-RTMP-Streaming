@@ -57,7 +57,7 @@ int Streamer::setupInput(const char *_videoFileName)
 
 int Streamer::setupOutput(const char *_rtmpServerAdress)
 {
-    avformat_alloc_output_context2(&ofmt_ctx, NULL, NULL, _rtmpServerAdress); //RTMP
+    avformat_alloc_output_context2(&ofmt_ctx, NULL, "h264", _rtmpServerAdress); //RTMP
     if (!ofmt_ctx)
     {
         cerr << "Could not create output context" << endl;
@@ -177,11 +177,23 @@ int Streamer::Stream()
 
         ret = avcodec_send_packet(icodec_ctx, pkt);
         if (ret < 0) {
-            cerr << "send packet error" << endl;
-            break;
-        }
+	    switch(ret) {
+	    case AVERROR(EAGAIN):
+		cerr<<"again"<<endl;
+		break;
+	    case AVERROR(ENOMEM):
+		cerr<<"nomem"<<endl;
+		break;
+	    case AVERROR(EINVAL):
+		cerr<<"inval"<<endl;
+		break;
+	    default:
+		cerr<<"eof"<<endl;
+            }
+        break;
+	}
 
-        ret = avcodec_receive_frame(icodec_ctx, frame)
+        ret = avcodec_receive_frame(icodec_ctx, frame);
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
         sws_scale(sws_ctx, frame->data, frame->linesize, 0, src_h, frame2->data, frame2->linesize);
         avcodec_send_frame(ocodec_ctx, frame2);
