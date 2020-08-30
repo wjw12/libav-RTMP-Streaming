@@ -14,6 +14,7 @@ extern "C"
 #include <libswscale/swscale.h>
 };
 
+
 class Streamer
 {
 public:

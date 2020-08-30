@@ -81,19 +81,23 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
         dec_ctx = in_stream->codec;
         enc_ctx = out_stream->codec;
 
-	enc_ctx->codec_id = dec_ctx->codec_id;//AV_CODEC_ID_H264;
-	enc_ctx->codec_type = AVMEDIA_TYPE_VIDEO;
+        enc_ctx->codec_id = dec_ctx->codec_id;//AV_CODEC_ID_H264;
+        enc_ctx->codec_type = AVMEDIA_TYPE_VIDEO;
         enc_ctx->qmin = 1;
-	enc_ctx->qmax = 41;
-	enc_ctx->qcompress = 0.6;
-	enc_ctx->bit_rate = 5000*1000;
+        enc_ctx->qmax = 41;
+        enc_ctx->qcompress = 0.6;
+        enc_ctx->bit_rate = 500*1000;
+
         decoder = avcodec_find_decoder(dec_ctx->codec_id);
         if (!decoder) {
             cerr << "Decoder not found " << endl;
             return -1;
         }
 
-        encoder = avcodec_find_encoder(dec_ctx->codec_id);//AV_CODEC_ID_H264);
+        ret = avcodec_parameters_to_context(dec_ctx, in_stream->codec);
+
+        //encoder = avcodec_find_encoder(dec_ctx->codec_id);//AV_CODEC_ID_H264);
+        encoder = avcodec_find_encoder_by_name("libx264");
         if (!encoder) {
             cerr << "Encoder not found " << endl;
             return -1;
@@ -120,7 +124,7 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
         if (ofmt_ctx->oformat->flags & AVFMT_GLOBALHEADER)
              enc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
-	avcodec_parameters_from_context(out_stream->codecpar, enc_ctx);
+	    ret = avcodec_parameters_from_context(out_stream->codecpar, enc_ctx);
 
         ret = avcodec_open2(dec_ctx, decoder, NULL);
         if (ret < 0) {
@@ -128,8 +132,10 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
             return ret;
         }
 
-	AVDictionary *opts = NULL;
-	av_dict_set(&opts, "preset", "medium", 0);
+        AVDictionary *opts = NULL;
+        av_dict_set(&opts, "preset", "medium", 0);
+        av_dict_set(&opts, "x264-params", "keyint=60:min-keyint=60:scenecut=0:force-cfr=1", 0);
+
         ret = avcodec_open2(enc_ctx, encoder, &opts);
         if (ret < 0) {
             cerr << "Failed to open encoder" << endl;
