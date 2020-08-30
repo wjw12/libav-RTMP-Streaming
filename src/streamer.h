@@ -1,16 +1,17 @@
 #ifndef _STREAMER_H_
 #define _STREAMER_H_
 
-// Import STD
 #include <iostream>
 #include <chrono>
 
-// Import LibAV
 extern "C"
 {
+#include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/mathematics.h>
 #include <libavutil/time.h>
+#include <libavutil/pixfmt.h>
+#include <libswscale/swscale.h>
 };
 
 class Streamer
@@ -24,11 +25,14 @@ public:
   AVOutputFormat *ofmt = NULL;
   AVFormatContext *ifmt_ctx = NULL;
   AVFormatContext *ofmt_ctx = NULL;
-  AVPacket pkt;
+  AVCodecContext *icodec_ctx = NULL;
+  AVCodecContext *ocodec_ctx = NULL;
+  AVPacket *pkt;
 
 private:
   int setupInput(const char *videoFileName);
   int setupOutput(const char *rtmpServerAdress);
+  int setupScaling();
 
   int ret;
 
@@ -36,9 +40,20 @@ private:
   const char *videoFileName;
   const char *rtmpServerAdress;
 
-protected:
   int videoIndex = -1;
   int frameIndex = 0;
   int64_t startTime = 0;
+
+  enum AVPixelFormat src_pix_fmt;
+  enum AVPixelFormat dst_pix_fmt = AV_PIX_FMT_YUV420P; // output pixel format
+  int src_w, src_h, dst_h;
+  int dst_w = 420;
+  int dst_sample_rate = 25;
+  struct SwsContext *sws_ctx;
+
+  // uint8_t *src_data[4], *dst_data[4];
+  // int src_linesize[4], dst_linesize[4];
+  // int dst_bufsize;
 };
+
 #endif
