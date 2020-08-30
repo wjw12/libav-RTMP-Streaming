@@ -34,6 +34,7 @@ private:
   int setupInput(const char *videoFileName);
   int setupOutput(const char *rtmpServerAdress);
   int setupScaling();
+  int encodeVideo(AVFrame *inputFrame);
 
   int ret;
 

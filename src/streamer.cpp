@@ -154,35 +154,54 @@ int Streamer::setupScaling()
         return -1;
     }
 
-    // allocate source and dest image buffers
-    // if ((ret = av_image_alloc(src_data, src_linesize, 
-    //                     src_w, src_h, src_pix_fmt, 0)) < 0) {
-    //     cerr << "Could not allocate source image" << endl;
-    //     return -1;
-    // }
-    
-    // if ((ret = av_image_alloc(dst_data, dst_linesize,
-    //                     dst_w, dst_h, dst_pix_fmt, 1)) < 0) {
-    //     cerr << "Could not allocate destination image" << endl;
-    //     return -1;
-    // }
 
-    // dst_bufsize = ret;
+    return 0;
+}
 
+int encodeVideo(AVFrame *input_frame) {
+    if (input_frame) input_frame->pict_type = AV_PICTURE_TYPE_NONE;
 
+    AVPacket *output_packet = av_packet_alloc();
+    if (!output_packet) { cerr << "could not allocate memory for output packet") << endl; return -1;}
+
+    ret = avcodec_send_frame(enc_ctx, input_frame);
+
+    AVStream * in_stream = ifmt_ctx->streams[videoIndex];
+    AVStream * out_stream = ofmt_ctx->streams[videoIndex];
+
+    while (ret >= 0) {
+        ret = avcodec_receive_packet(enc_ctx, output_packet);
+        if (response == AVERROR(EAGAIN) || response == AVERROR_EOF) {
+        break;
+        } else if (ret < 0) {
+        cerr << "Error while receiving packet from encoder: " << av_err2str(ret) << endl;
+        return -1;
+        }
+
+        output_packet->stream_index = videoIndex;
+        output_packet->duration = out_stream->time_base.den / out_stream->time_base.num / 
+            in_stream->avg_frame_rate.num * in_stream->avg_frame_rate.den;
+
+        av_packet_rescale_ts(output_packet, in_stream->time_base, out_stream->time_base);
+        ret = av_interleaved_write_frame(ofmt_ctx, output_packet);
+        if (ret != 0) { cerr << "Error %d while receiving packet from decoder: " << av_err2str(ret)); return -1;}
+    }
+    av_packet_unref(output_packet);
+    av_packet_free(&output_packet);
     return 0;
 }
 
 int Streamer::Stream()
 {
-    //Open output URL
-        ret = avio_open(&ofmt_ctx->pb, rtmpServerAdress, AVIO_FLAG_WRITE);
-        if (ret < 0)
-        {
-            cerr << "Could not open output URL " << rtmpServerAdress << endl;
-            return -1;
-        }
-    //Write file header
+    // Open output URL
+    ret = avio_open(&ofmt_ctx->pb, rtmpServerAdress, AVIO_FLAG_WRITE);
+    if (ret < 0)
+    {
+        cerr << "Could not open output URL " << rtmpServerAdress << endl;
+        return -1;
+    }
+
+    // Write file header
     ret = avformat_write_header(ofmt_ctx, NULL);
     if (ret < 0)
     {
@@ -195,9 +214,8 @@ int Streamer::Stream()
     AVPacket pkt;
 
     startTime = av_gettime();
-    while (1)
+    while (true)
     {
-cout << "loop";
         AVStream *in_stream, *out_stream;
         ret = av_read_frame(ifmt_ctx, &pkt);
         if (ret < 0) {
@@ -207,72 +225,63 @@ cout << "loop";
 
         ret = avcodec_send_packet(dec_ctx, &pkt);
         if (ret < 0) {
-	    switch(ret) {
-	    case AVERROR(EAGAIN):
-		cerr<<"again"<<endl;
-		break;
-	    case AVERROR(ENOMEM):
-		cerr<<"nomem"<<endl;
-		break;
-	    case AVERROR(EINVAL):
-		cerr<<"inval"<<endl;
-		break;
-	    default:
-		cerr<<"eof"<<endl;
+            cerr << "Error while sending packet to decoder:" << av_err2str(ret) << endl;
+            return ret;
+        }
+
+        while (ret >= 0) {
+            ret = avcodec_receive_frame(dec_ctx, frame);
+            if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
+            else if (ret < 0) {
+                cerr << "Error while receiving frame from decoder:" << av_err2str(ret) << endl;
+                return ret;
             }
-	cout << "send packet error" << ret << endl;
-            break;
-	}
+            
+            ret = sws_scale(sws_ctx, frame->data, frame->linesize, 
+                        0, src_h, frame2->data, frame2->linesize);
+                        
+            if (ret < 0) {
+                cerr << "Error while scaling a frame:" << av_err2str(ret) << endl;
+                return ret;
+            }
 
-        ret = avcodec_receive_frame(dec_ctx, frame);
-	cout << "receive" << ret;
-        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) continue;
-        sws_scale(sws_ctx, frame->data, frame->linesize, 0, src_h, frame2->data, frame2->linesize);
-        cout << "scale" << endl;
-	ret = avcodec_send_frame(enc_ctx, frame2);
-	cout << "send" << ret;
-        ret = avcodec_receive_packet(enc_ctx, &pkt);
-	cout << "receive pkt" << ret;
-        if (pkt.pts == AV_NOPTS_VALUE)
-        {
-            //Write PTS
-            AVRational time_base1 = ifmt_ctx->streams[videoIndex]->time_base;
-            //Duration between 2 frames (us)
-            int64_t calc_duration = (double)AV_TIME_BASE / av_q2d(ifmt_ctx->streams[videoIndex]->r_frame_rate);
-            //Parameters
-            pkt.pts = (double)(frameIndex * calc_duration) / (double)(av_q2d(time_base1) * AV_TIME_BASE);
-            pkt.dts = pkt.pts;
-            pkt.duration = (double)calc_duration / (double)(av_q2d(time_base1) * AV_TIME_BASE);
+            encodeVideo(frame2);
         }
+        
+        // if (pkt.pts == AV_NOPTS_VALUE)
+        // {
+        //     //Write PTS
+        //     AVRational time_base1 = ifmt_ctx->streams[videoIndex]->time_base;
+        //     //Duration between 2 frames (us)
+        //     int64_t calc_duration = (double)AV_TIME_BASE / av_q2d(ifmt_ctx->streams[videoIndex]->r_frame_rate);
+        //     //Parameters
+        //     pkt.pts = (double)(frameIndex * calc_duration) / (double)(av_q2d(time_base1) * AV_TIME_BASE);
+        //     pkt.dts = pkt.pts;
+        //     pkt.duration = (double)calc_duration / (double)(av_q2d(time_base1) * AV_TIME_BASE);
+        // }
 
-        if (pkt.stream_index == videoIndex)
-        {
-            AVRational time_base = ifmt_ctx->streams[videoIndex]->time_base;
-            AVRational time_base_q = {1, AV_TIME_BASE};
-            int64_t pts_time = av_rescale_q(pkt.dts, time_base, time_base_q);
-            int64_t now_time = av_gettime() - startTime;
-            if (pts_time > now_time)
-                av_usleep(pts_time - now_time);
-        }
+        // if (pkt.stream_index == videoIndex)
+        // {
+        //     AVRational time_base = ifmt_ctx->streams[videoIndex]->time_base;
+        //     AVRational time_base_q = {1, AV_TIME_BASE};
+        //     int64_t pts_time = av_rescale_q(pkt.dts, time_base, time_base_q);
+        //     int64_t now_time = av_gettime() - startTime;
+        //     if (pts_time > now_time)
+        //         av_usleep(pts_time - now_time);
+        // }
 
-        in_stream = ifmt_ctx->streams[pkt.stream_index];
-        out_stream = ofmt_ctx->streams[pkt.stream_index];
-        pkt.pts = av_rescale_q_rnd(pkt.pts, in_stream->time_base, out_stream->time_base, (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
-        pkt.dts = av_rescale_q_rnd(pkt.dts, in_stream->time_base, out_stream->time_base, (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
-        pkt.duration = av_rescale_q(pkt.duration, in_stream->time_base, out_stream->time_base);
-        pkt.pos = -1;
-        if (pkt.stream_index == videoIndex)
-        {
-            frameIndex++;
-        }
-        //ret = av_write_frame(ofmt_ctx, &pkt);
-        ret = av_interleaved_write_frame(ofmt_ctx, &pkt);
-
-        if (ret < 0)
-        {
-            cerr << "Error muxing packet" << endl;
-            break;
-        }
+        // in_stream = ifmt_ctx->streams[pkt.stream_index];
+        // out_stream = ofmt_ctx->streams[pkt.stream_index];
+        // pkt.pts = av_rescale_q_rnd(pkt.pts, in_stream->time_base, out_stream->time_base, (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
+        // pkt.dts = av_rescale_q_rnd(pkt.dts, in_stream->time_base, out_stream->time_base, (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
+        // pkt.duration = av_rescale_q(pkt.duration, in_stream->time_base, out_stream->time_base);
+        // pkt.pos = -1;
+        // if (pkt.stream_index == videoIndex)
+        // {
+        //     frameIndex++;
+        // }
+        // //ret = av_write_frame(ofmt_ctx, &pkt);
+        // ret = av_interleaved_write_frame(ofmt_ctx, &pkt);
 
         av_free_packet(&pkt);
     }
