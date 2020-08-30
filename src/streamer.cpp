@@ -158,11 +158,11 @@ int Streamer::setupScaling()
     return 0;
 }
 
-int encodeVideo(AVFrame *input_frame) {
+int Streamer::encodeVideo(AVFrame *input_frame) {
     if (input_frame) input_frame->pict_type = AV_PICTURE_TYPE_NONE;
 
     AVPacket *output_packet = av_packet_alloc();
-    if (!output_packet) { cerr << "could not allocate memory for output packet") << endl; return -1;}
+    if (!output_packet) { cerr << "could not allocate memory for output packet" << endl; return -1;}
 
     ret = avcodec_send_frame(enc_ctx, input_frame);
 
@@ -171,10 +171,10 @@ int encodeVideo(AVFrame *input_frame) {
 
     while (ret >= 0) {
         ret = avcodec_receive_packet(enc_ctx, output_packet);
-        if (response == AVERROR(EAGAIN) || response == AVERROR_EOF) {
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
         break;
         } else if (ret < 0) {
-        cerr << "Error while receiving packet from encoder: " << av_err2str(ret) << endl;
+        cerr << "Error while receiving packet from encoder: " << ret << endl;
         return -1;
         }
 
@@ -184,7 +184,7 @@ int encodeVideo(AVFrame *input_frame) {
 
         av_packet_rescale_ts(output_packet, in_stream->time_base, out_stream->time_base);
         ret = av_interleaved_write_frame(ofmt_ctx, output_packet);
-        if (ret != 0) { cerr << "Error %d while receiving packet from decoder: " << av_err2str(ret)); return -1;}
+        if (ret != 0) { cerr << "Error %d while receiving packet from decoder: "  << ret << endl; return -1;}
     }
     av_packet_unref(output_packet);
     av_packet_free(&output_packet);
@@ -225,7 +225,7 @@ int Streamer::Stream()
 
         ret = avcodec_send_packet(dec_ctx, &pkt);
         if (ret < 0) {
-            cerr << "Error while sending packet to decoder:" << av_err2str(ret) << endl;
+            cerr << "Error while sending packet to decoder:" << ret << endl;
             return ret;
         }
 
@@ -233,15 +233,15 @@ int Streamer::Stream()
             ret = avcodec_receive_frame(dec_ctx, frame);
             if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
             else if (ret < 0) {
-                cerr << "Error while receiving frame from decoder:" << av_err2str(ret) << endl;
+                cerr << "Error while receiving frame from decoder:" << ret << endl;
                 return ret;
             }
             
             ret = sws_scale(sws_ctx, frame->data, frame->linesize, 
                         0, src_h, frame2->data, frame2->linesize);
-                        
+
             if (ret < 0) {
-                cerr << "Error while scaling a frame:" << av_err2str(ret) << endl;
+                cerr << "Error while scaling a frame:" << ret << endl;
                 return ret;
             }
 
