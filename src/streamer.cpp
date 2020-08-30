@@ -81,19 +81,19 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
         dec_ctx = in_stream->codec;
         enc_ctx = out_stream->codec;
 
-	enc_ctx->codec_id = AV_CODEC_ID_H264;
+	enc_ctx->codec_id = dec_ctx->codec_id;//AV_CODEC_ID_H264;
 	enc_ctx->codec_type = AVMEDIA_TYPE_VIDEO;
-        enc_ctx->qmin = 10;
+        enc_ctx->qmin = 1;
 	enc_ctx->qmax = 41;
 	enc_ctx->qcompress = 0.6;
-	enc_ctx->bit_rate = 500*1000;
+	enc_ctx->bit_rate = 5000*1000;
         decoder = avcodec_find_decoder(dec_ctx->codec_id);
         if (!decoder) {
             cerr << "Decoder not found " << endl;
             return -1;
         }
 
-        encoder = avcodec_find_encoder(AV_CODEC_ID_H264);
+        encoder = avcodec_find_encoder(dec_ctx->codec_id);//AV_CODEC_ID_H264);
         if (!encoder) {
             cerr << "Encoder not found " << endl;
             return -1;
@@ -216,6 +216,7 @@ int Streamer::Stream()
     startTime = av_gettime();
     while (true)
     {
+cout << "1";
         AVStream *in_stream, *out_stream;
         ret = av_read_frame(ifmt_ctx, &pkt);
         if (ret < 0) {
@@ -283,7 +284,7 @@ int Streamer::Stream()
         // //ret = av_write_frame(ofmt_ctx, &pkt);
         // ret = av_interleaved_write_frame(ofmt_ctx, &pkt);
 
-        av_free_packet(&pkt);
+        // av_free_packet(&pkt);
     }
 
     //Write file trailer
