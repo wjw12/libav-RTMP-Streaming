@@ -87,6 +87,7 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
         enc_ctx->qmax = 41;
         enc_ctx->qcompress = 0.6;
         enc_ctx->bit_rate = 500*1000;
+        enc_ctx->time_base = 
 
         decoder = avcodec_find_decoder(dec_ctx->codec_id);
         if (!decoder) {
@@ -116,9 +117,8 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
         enc_ctx->sample_aspect_ratio = dec_ctx->sample_aspect_ratio;
         enc_ctx->pix_fmt = dst_pix_fmt;
 
-        enc_ctx->time_base = dec_ctx->time_base;
-
-        // sample rate TODO
+        AVRational time_base_q = {1, AV_TIME_BASE};
+        enc_ctx->time_base = time_base_q;
 
         // enc_ctx->codec_tag = 0;
         if (ofmt_ctx->oformat->flags & AVFMT_GLOBALHEADER)
@@ -185,8 +185,11 @@ int Streamer::encodeVideo(AVFrame *input_frame) {
         }
 
         output_packet->stream_index = videoIndex;
-        output_packet->duration = out_stream->time_base.den / out_stream->time_base.num / 
-            in_stream->avg_frame_rate.num * in_stream->avg_frame_rate.den;
+        //output_packet->duration = out_stream->time_base.den / out_stream->time_base.num / 
+        //    in_stream->avg_frame_rate.num * in_stream->avg_frame_rate.den;
+        output_packet->pts = pkt.pts;
+        output_packet->dts = pkt.dts;
+        output_packet->duration = pkt.duration;
 
         av_packet_rescale_ts(output_packet, in_stream->time_base, out_stream->time_base);
         ret = av_interleaved_write_frame(ofmt_ctx, output_packet);
@@ -207,17 +210,8 @@ int Streamer::Stream()
         return -1;
     }
 
-    // Write file header
-    ret = avformat_write_header(ofmt_ctx, NULL);
-    if (ret < 0)
-    {
-        cerr << "Error occurred when opening output URL" << endl;
-        return -1;
-    }
-    
     AVFrame *frame = av_frame_alloc();
     AVFrame *frame2 = av_frame_alloc();
-    AVPacket pkt;
 
     int num_bytes = avpicture_get_size(dst_pix_fmt, dst_w, dst_h);
     uint8_t* frame2_buffer = (uint8_t*)av_malloc(num_bytes * sizeof(uint8_t));
@@ -226,17 +220,49 @@ int Streamer::Stream()
     frame2->height = dst_h;
     frame2->format = dst_pix_fmt;
 
+    AVStream *in_stream = ifmt_ctx->streams[videoIndex];
+    AVStream *out_stream = ofmt_ctx->streams[videoIndex];
+    AVRational time_base = in_stream->time_base;
+    AVRational time_base_q = {1, AV_TIME_BASE};
+    AVRational dst_frame_rate = {dst_fps, 1};
+    out_stream->time_base = time_base_q;
+    out_stream->avg_frame_rate = dst_frame_rate;
+
+    // Write file header
+    ret = avformat_write_header(ofmt_ctx, NULL);
+    if (ret < 0)
+    {
+        cerr << "Error occurred when opening output URL" << endl;
+        return -1;
+    }
+
     startTime = av_gettime();
     while (true)
     {
-cout << "1";
-        AVStream *in_stream, *out_stream;
         ret = av_read_frame(ifmt_ctx, &pkt);
         if (ret < 0) {
             cout << "end of stream" << endl;
             break;
         }
-	if (pkt.stream_index != videoIndex) continue;
+
+	    if (pkt.stream_index != videoIndex) continue;
+
+        if (pkt.pts == AV_NOPTS_VALUE)
+        {
+            AVRational time_base1 = in_stream->time_base;
+            int64_t calc_duration = (double)AV_TIME_BASE / av_q2d(in_stream->r_frame_rate);
+            pkt.pts = (double)(frameIndex * calc_duration) / (double)(av_q2d(time_base1) * AV_TIME_BASE);
+            pkt.dts = pkt.pts;
+            pkt.duration = (double)calc_duration / (double)(av_q2d(time_base1) * AV_TIME_BASE);
+        }
+        int64_t pts_time = av_rescale_q(pkt.dts, time_base, time_base_q);
+        int64_t now_time = av_gettime() - startTime;
+        if (pts_time > now_time) av_usleep(pts_time - now_time);
+        // pkt.pts = av_rescale_q_rnd(pkt.pts, in_stream->time_base, out_stream->time_base, (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
+        // pkt.dts = av_rescale_q_rnd(pkt.dts, in_stream->time_base, out_stream->time_base, (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
+        // pkt.duration = av_rescale_q(pkt.duration, in_stream->time_base, out_stream->time_base);
+        pkt.pos = -1;
+        frameIndex++;
 
         ret = avcodec_send_packet(dec_ctx, &pkt);
         if (ret < 0) {
@@ -245,7 +271,6 @@ cout << "1";
         }
 
         while (ret >= 0) {
-cout << "2";
             ret = avcodec_receive_frame(dec_ctx, frame);
             if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
             else if (ret < 0) {
