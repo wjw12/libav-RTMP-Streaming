@@ -25,8 +25,10 @@ public:
   AVOutputFormat *ofmt = NULL;
   AVFormatContext *ifmt_ctx = NULL;
   AVFormatContext *ofmt_ctx = NULL;
-  AVCodecContext *icodec_ctx = NULL;
-  AVCodecContext *ocodec_ctx = NULL;
+  AVCodecContext *dec_ctx = NULL;
+  AVCodecContext *enc_ctx = NULL;
+  AVCodec *encoder = NULL;
+  AVCodec *decoder = NULL;
   AVPacket *pkt;
 
 private:

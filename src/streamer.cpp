@@ -45,8 +45,6 @@ int Streamer::setupInput(const char *_videoFileName)
         if (ifmt_ctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO)
         {
             videoIndex = i;
-            // AVCodecParameters *codec_params = ifmt_ctx->streams[i]->codecpar;
-            // AVCodec *codec = avcodec_find_decoder(codec_params->codec_id);
             break;
         }
     }
@@ -65,13 +63,14 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
         return -1;
     }
 
+
     ofmt = ofmt_ctx->oformat;
     for (int i = 0; i < ifmt_ctx->nb_streams; i++)
     {
         if (i != videoIndex) continue;
         
         AVStream *in_stream = ifmt_ctx->streams[i];
-        AVStream *out_stream = avformat_new_stream(ofmt_ctx, in_stream->codec->codec);
+        AVStream *out_stream = avformat_new_stream(ofmt_ctx, NULL);
         if (!out_stream)
         {
             cerr << "Failed allocating output stream" << endl;
@@ -79,31 +78,58 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
             return -1;
         }
 
-        icodec_ctx = in_stream->codec;
-        ocodec_ctx = out_stream->codec;
-        ret = avcodec_copy_context(out_stream->codec, in_stream->codec);
-        if (ret < 0)
-        {
-            cerr << "Failed to copy context from input to output stream codec context" << endl;
+        dec_ctx = in_stream->codec;
+        enc_ctx = out_stream->codec;
+
+        cout << "Decoder codec ID = ", dec_ctx->codec_id << endl;
+        cout << "Encoder codec ID = ", enc_ctx->codec_id << endl;
+        
+        decoder = avcodec_find_decoder(dec_ctx->codec_id);
+        if (!decoder) {
+            cerr << "Decoder not found " << dec_ctx->codec_id << endl;
+            return -1;
+        }
+
+        encoder = avcodec_find_encoder(AV_CODEC_ID_H264);
+        if (!encoder) {
+            cerr << "Encoder not found " << AV_CODEC_ID_H264 << endl;
             return -1;
         }
 
         // set output properties
-        src_w = icodec_ctx->width;
-        src_h = icodec_ctx->height;
+
+        src_w = dec_ctx->width;
+        src_h = dec_ctx->height;
 
         // get output resolution
         dst_h = dst_w * src_h / src_w;
 
-        ocodec_ctx->pix_fmt = dst_pix_fmt;
+        enc_ctx->width = dst_w;
+        enc_ctx->height = dst_h;
+        enc_ctx->sample_aspect_ratio = dec_ctx->sample_aspect_ratio;
+        enc_ctx->pix_fmt = dst_pix_fmt;
+
+        enc_ctx->time_base = dec_ctx->time_base;
 
         // sample rate TODO
 
-        ocodec_ctx->codec_tag = 0;
+        // enc_ctx->codec_tag = 0;
+        if (ofmt_ctx->oformat->flags & AVFMT_GLOBALHEADER)
+             enc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
-        if (ofmt_ctx->oformat->flags & 1 << 22)
-            ocodec_ctx->flags |= 1 << 22;
+        ret = avcodec_open2(dec_ctx, decoder, NULL);
+        if (ret < 0) {
+            cerr << "Failed to open decoder" << endl;
+            return ret;
+        }
+
+        ret = avcodec_open2(enc_ctx, encoder, NULL);
+        if (ret < 0) {
+            cerr << "Failed to open encoder" << endl;
+            return ret;
+        }
     }
+    av_dump_format(ofmt_ctx, 0, _rtmpServerAdress, 1);
     return 0;
 }
 
@@ -142,7 +168,6 @@ int Streamer::setupScaling()
 
 int Streamer::Stream()
 {
-    av_dump_format(ofmt_ctx, 0, rtmpServerAdress, 1);
     //Open output URL
     if (!(ofmt->flags & AVFMT_NOFILE))
     {
@@ -160,7 +185,6 @@ int Streamer::Stream()
         cerr << "Error occurred when opening output URL" << endl;
         return -1;
     }
-
     
     AVFrame *frame = av_frame_alloc();
     AVFrame *frame2 = av_frame_alloc();
@@ -175,7 +199,7 @@ int Streamer::Stream()
             break;
         }
 
-        ret = avcodec_send_packet(icodec_ctx, pkt);
+        ret = avcodec_send_packet(dec_ctx, pkt);
         if (ret < 0) {
 	    switch(ret) {
 	    case AVERROR(EAGAIN):
@@ -193,12 +217,12 @@ int Streamer::Stream()
         break;
 	}
 
-        ret = avcodec_receive_frame(icodec_ctx, frame);
+        ret = avcodec_receive_frame(dec_ctx, frame);
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
         sws_scale(sws_ctx, frame->data, frame->linesize, 0, src_h, frame2->data, frame2->linesize);
-        avcodec_send_frame(ocodec_ctx, frame2);
+        avcodec_send_frame(enc_ctx, frame2);
 
-        avcodec_receive_packet(ocodec_ctx, pkt);
+        avcodec_receive_packet(enc_ctx, pkt);
 
         if (pkt->pts == AV_NOPTS_VALUE)
         {
