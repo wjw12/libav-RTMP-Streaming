@@ -87,7 +87,6 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
         enc_ctx->qmax = 41;
         enc_ctx->qcompress = 0.6;
         enc_ctx->bit_rate = 500*1000;
-        enc_ctx->time_base = 
 
         decoder = avcodec_find_decoder(dec_ctx->codec_id);
         if (!decoder) {
@@ -117,8 +116,8 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
         enc_ctx->sample_aspect_ratio = dec_ctx->sample_aspect_ratio;
         enc_ctx->pix_fmt = dst_pix_fmt;
 
-        AVRational time_base_q = {1, AV_TIME_BASE};
-        enc_ctx->time_base = time_base_q;
+        AVRational time_base = {1, dst_fps};
+        enc_ctx->time_base = time_base;
 
         // enc_ctx->codec_tag = 0;
         if (ofmt_ctx->oformat->flags & AVFMT_GLOBALHEADER)
@@ -223,9 +222,10 @@ int Streamer::Stream()
     AVStream *in_stream = ifmt_ctx->streams[videoIndex];
     AVStream *out_stream = ofmt_ctx->streams[videoIndex];
     AVRational time_base = in_stream->time_base;
+    AVRational dst_time_base = {1, dst_fps};
     AVRational time_base_q = {1, AV_TIME_BASE};
     AVRational dst_frame_rate = {dst_fps, 1};
-    out_stream->time_base = time_base_q;
+    out_stream->time_base = dst_time_base;
     out_stream->avg_frame_rate = dst_frame_rate;
 
     // Write file header
