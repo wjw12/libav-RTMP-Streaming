@@ -29,7 +29,6 @@ public:
   AVCodecContext *enc_ctx = NULL;
   AVCodec *encoder = NULL;
   AVCodec *decoder = NULL;
-  AVPacket *pkt;
 
 private:
   int setupInput(const char *videoFileName);

@@ -81,18 +81,21 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
         dec_ctx = in_stream->codec;
         enc_ctx = out_stream->codec;
 
-        cout << "Decoder codec ID = ", dec_ctx->codec_id << endl;
-        cout << "Encoder codec ID = ", enc_ctx->codec_id << endl;
-        
+	enc_ctx->codec_id = AV_CODEC_ID_H264;
+	enc_ctx->codec_type = AVMEDIA_TYPE_VIDEO;
+        enc_ctx->qmin = 10;
+	enc_ctx->qmax = 41;
+	enc_ctx->qcompress = 0.6;
+	enc_ctx->bit_rate = 500*1000;
         decoder = avcodec_find_decoder(dec_ctx->codec_id);
         if (!decoder) {
-            cerr << "Decoder not found " << dec_ctx->codec_id << endl;
+            cerr << "Decoder not found " << endl;
             return -1;
         }
 
         encoder = avcodec_find_encoder(AV_CODEC_ID_H264);
         if (!encoder) {
-            cerr << "Encoder not found " << AV_CODEC_ID_H264 << endl;
+            cerr << "Encoder not found " << endl;
             return -1;
         }
 
@@ -117,13 +120,17 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
         if (ofmt_ctx->oformat->flags & AVFMT_GLOBALHEADER)
              enc_ctx->flags |= AV_CODEC_FLAG_GLOBAL_HEADER;
 
+	avcodec_parameters_from_context(out_stream->codecpar, enc_ctx);
+
         ret = avcodec_open2(dec_ctx, decoder, NULL);
         if (ret < 0) {
             cerr << "Failed to open decoder" << endl;
             return ret;
         }
 
-        ret = avcodec_open2(enc_ctx, encoder, NULL);
+	AVDictionary *opts = NULL;
+	av_dict_set(&opts, "preset", "medium", 0);
+        ret = avcodec_open2(enc_ctx, encoder, &opts);
         if (ret < 0) {
             cerr << "Failed to open encoder" << endl;
             return ret;
@@ -135,7 +142,7 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
 
 int Streamer::setupScaling()
 {
-    src_pix_fmt = icodec_ctx->pix_fmt;
+    src_pix_fmt = dec_ctx->pix_fmt;
 
     // create scaling context
     sws_ctx = sws_getContext(src_w, src_h, src_pix_fmt,
@@ -169,15 +176,12 @@ int Streamer::setupScaling()
 int Streamer::Stream()
 {
     //Open output URL
-    if (!(ofmt->flags & AVFMT_NOFILE))
-    {
         ret = avio_open(&ofmt_ctx->pb, rtmpServerAdress, AVIO_FLAG_WRITE);
         if (ret < 0)
         {
-            cerr << "Could not open output URL '%s'" << rtmpServerAdress << endl;
+            cerr << "Could not open output URL " << rtmpServerAdress << endl;
             return -1;
         }
-    }
     //Write file header
     ret = avformat_write_header(ofmt_ctx, NULL);
     if (ret < 0)
@@ -188,18 +192,20 @@ int Streamer::Stream()
     
     AVFrame *frame = av_frame_alloc();
     AVFrame *frame2 = av_frame_alloc();
+    AVPacket pkt;
 
     startTime = av_gettime();
     while (1)
     {
+cout << "loop";
         AVStream *in_stream, *out_stream;
-        ret = av_read_frame(ifmt_ctx, pkt);
+        ret = av_read_frame(ifmt_ctx, &pkt);
         if (ret < 0) {
             cout << "end of stream" << endl;
             break;
         }
 
-        ret = avcodec_send_packet(dec_ctx, pkt);
+        ret = avcodec_send_packet(dec_ctx, &pkt);
         if (ret < 0) {
 	    switch(ret) {
 	    case AVERROR(EAGAIN):
@@ -214,50 +220,53 @@ int Streamer::Stream()
 	    default:
 		cerr<<"eof"<<endl;
             }
-        break;
+	cout << "send packet error" << ret << endl;
+            break;
 	}
 
         ret = avcodec_receive_frame(dec_ctx, frame);
-        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
+	cout << "receive" << ret;
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) continue;
         sws_scale(sws_ctx, frame->data, frame->linesize, 0, src_h, frame2->data, frame2->linesize);
-        avcodec_send_frame(enc_ctx, frame2);
-
-        avcodec_receive_packet(enc_ctx, pkt);
-
-        if (pkt->pts == AV_NOPTS_VALUE)
+        cout << "scale" << endl;
+	ret = avcodec_send_frame(enc_ctx, frame2);
+	cout << "send" << ret;
+        ret = avcodec_receive_packet(enc_ctx, &pkt);
+	cout << "receive pkt" << ret;
+        if (pkt.pts == AV_NOPTS_VALUE)
         {
             //Write PTS
             AVRational time_base1 = ifmt_ctx->streams[videoIndex]->time_base;
             //Duration between 2 frames (us)
             int64_t calc_duration = (double)AV_TIME_BASE / av_q2d(ifmt_ctx->streams[videoIndex]->r_frame_rate);
             //Parameters
-            pkt->pts = (double)(frameIndex * calc_duration) / (double)(av_q2d(time_base1) * AV_TIME_BASE);
-            pkt->dts = pkt->pts;
-            pkt->duration = (double)calc_duration / (double)(av_q2d(time_base1) * AV_TIME_BASE);
+            pkt.pts = (double)(frameIndex * calc_duration) / (double)(av_q2d(time_base1) * AV_TIME_BASE);
+            pkt.dts = pkt.pts;
+            pkt.duration = (double)calc_duration / (double)(av_q2d(time_base1) * AV_TIME_BASE);
         }
 
-        if (pkt->stream_index == videoIndex)
+        if (pkt.stream_index == videoIndex)
         {
             AVRational time_base = ifmt_ctx->streams[videoIndex]->time_base;
             AVRational time_base_q = {1, AV_TIME_BASE};
-            int64_t pts_time = av_rescale_q(pkt->dts, time_base, time_base_q);
+            int64_t pts_time = av_rescale_q(pkt.dts, time_base, time_base_q);
             int64_t now_time = av_gettime() - startTime;
             if (pts_time > now_time)
                 av_usleep(pts_time - now_time);
         }
 
-        in_stream = ifmt_ctx->streams[pkt->stream_index];
-        out_stream = ofmt_ctx->streams[pkt->stream_index];
-        pkt->pts = av_rescale_q_rnd(pkt->pts, in_stream->time_base, out_stream->time_base, (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
-        pkt->dts = av_rescale_q_rnd(pkt->dts, in_stream->time_base, out_stream->time_base, (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
-        pkt->duration = av_rescale_q(pkt->duration, in_stream->time_base, out_stream->time_base);
-        pkt->pos = -1;
-        if (pkt->stream_index == videoIndex)
+        in_stream = ifmt_ctx->streams[pkt.stream_index];
+        out_stream = ofmt_ctx->streams[pkt.stream_index];
+        pkt.pts = av_rescale_q_rnd(pkt.pts, in_stream->time_base, out_stream->time_base, (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
+        pkt.dts = av_rescale_q_rnd(pkt.dts, in_stream->time_base, out_stream->time_base, (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
+        pkt.duration = av_rescale_q(pkt.duration, in_stream->time_base, out_stream->time_base);
+        pkt.pos = -1;
+        if (pkt.stream_index == videoIndex)
         {
             frameIndex++;
         }
         //ret = av_write_frame(ofmt_ctx, &pkt);
-        ret = av_interleaved_write_frame(ofmt_ctx, pkt);
+        ret = av_interleaved_write_frame(ofmt_ctx, &pkt);
 
         if (ret < 0)
         {
@@ -265,7 +274,7 @@ int Streamer::Stream()
             break;
         }
 
-        av_free_packet(pkt);
+        av_free_packet(&pkt);
     }
 
     //Write file trailer
