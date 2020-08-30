@@ -94,7 +94,7 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
             return -1;
         }
 
-        ret = avcodec_parameters_to_context(dec_ctx, in_stream->codec);
+        ret = avcodec_parameters_to_context(dec_ctx, in_stream->codecpar);
 
         //encoder = avcodec_find_encoder(dec_ctx->codec_id);//AV_CODEC_ID_H264);
         encoder = avcodec_find_encoder_by_name("libx264");
@@ -219,6 +219,13 @@ int Streamer::Stream()
     AVFrame *frame2 = av_frame_alloc();
     AVPacket pkt;
 
+    int num_bytes = avpicture_get_size(dst_pix_fmt, dst_w, dst_h);
+    uint8_t* frame2_buffer = (uint8_t*)av_malloc(num_bytes * sizeof(uint8_t));
+    avpicture_fill((AVPicture*)frame2, frame2_buffer, dst_pix_fmt, dst_w, dst_h);
+    frame2->width = dst_w;
+    frame2->height = dst_h;
+    frame2->format = dst_pix_fmt;
+
     startTime = av_gettime();
     while (true)
     {
@@ -229,6 +236,7 @@ cout << "1";
             cout << "end of stream" << endl;
             break;
         }
+	if (pkt.stream_index != videoIndex) continue;
 
         ret = avcodec_send_packet(dec_ctx, &pkt);
         if (ret < 0) {
@@ -237,6 +245,7 @@ cout << "1";
         }
 
         while (ret >= 0) {
+cout << "2";
             ret = avcodec_receive_frame(dec_ctx, frame);
             if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
             else if (ret < 0) {
