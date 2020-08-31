@@ -170,7 +170,7 @@ int Streamer::encodeVideo(AVFrame *input_frame) {
     AVStream * out_stream = ofmt_ctx->streams[videoIndex];
 
     while (ret >= 0) {
-        ret = avcodec_receive_packet(enc_ctx, output_packet);
+        ret = avcodec_receive_packet(enc_ctx, &output_packet);
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
             break;
         } else if (ret < 0) {
@@ -178,14 +178,14 @@ int Streamer::encodeVideo(AVFrame *input_frame) {
             return -1;
         }
 
-        output_packet->stream_index = videoIndex;
+        output_packet.stream_index = videoIndex;
         //output_packet->duration = out_stream->time_base.den / out_stream->time_base.num / 
         //    in_stream->avg_frame_rate.num * in_stream->avg_frame_rate.den;
-        output_packet->pts = outIndex++;//pkt.pts;
-        output_packet->dts = output_packet->pts;//pkt.dts;
-        output_packet->duration = 1;//pkt.duration;
+        output_packet.pts = outIndex++;//pkt.pts;
+        output_packet.dts = output_packet.pts;//pkt.dts;
+        output_packet.duration = 1;//pkt.duration;
         AVRational dst_time_base = {1, dst_fps};
-        av_packet_rescale_ts(output_packet, dst_time_base, out_stream->time_base);
+        av_packet_rescale_ts(output_packet, dst_time_base, out_stream.time_base);
         ret = av_interleaved_write_frame(ofmt_ctx, output_packet);
         if (ret < 0) { cout << "Error while writing packet"  << ret << endl; return ret;}
     }
