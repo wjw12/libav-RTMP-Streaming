@@ -21,8 +21,6 @@ Streamer::Streamer(const char *_videoFileName,
 
 Streamer::~Streamer()
 {
-    // av_freep(&src_data[0]);
-    // av_freep(&dst_data[0]);
     sws_freeContext(sws_ctx);
 }
 
@@ -188,7 +186,6 @@ int Streamer::encodeVideo(AVFrame *input_frame) {
         output_packet->pts = outIndex++;//pkt.pts;
         output_packet->dts = output_packet->pts;//pkt.dts;
         output_packet->duration = 1;//pkt.duration;
-cout << "output index" << outIndex << endl;
         AVRational dst_time_base = {1, dst_fps};
         av_packet_rescale_ts(output_packet, dst_time_base, out_stream->time_base);
         ret = av_interleaved_write_frame(ofmt_ctx, output_packet);
@@ -228,6 +225,7 @@ int Streamer::Stream()
     out_stream->time_base = dst_time_base;
     out_stream->avg_frame_rate = dst_frame_rate;
     out_stream->r_frame_rate = dst_frame_rate;
+    avcodec_parameters_from_context(out_stream->codecpar, enc_ctx);
     out_stream->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
 
     // Write file header
@@ -243,8 +241,10 @@ int Streamer::Stream()
     {
         ret = av_read_frame(ifmt_ctx, &pkt);
         if (ret < 0) {
-            cout << "end of stream" << endl;
-            break;
+            avio_seek(ifmt_ctx->pb, 0, SEEK_SET);
+	    avformat_seek_file(ifmt_ctx, videoIndex, 0, 0, in_stream->duration, 0);
+            cout << "loop stream" << endl;
+            continue;
         }
 	    if (pkt.stream_index != videoIndex) continue;
 
@@ -264,7 +264,6 @@ int Streamer::Stream()
         // pkt.duration = av_rescale_q(pkt.duration, in_stream->time_base, out_stream->time_base);
         //pkt.pos = -1;
         frameIndex++;
-cout << "frame" << frameIndex << endl;
         ret = avcodec_send_packet(dec_ctx, &pkt);
         if (ret < 0) {
             cout << "Error while sending packet to decoder:" << ret << endl;
