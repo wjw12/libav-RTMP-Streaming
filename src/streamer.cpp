@@ -163,8 +163,6 @@ int Streamer::setupScaling()
 }
 
 int Streamer::encodeVideo(AVFrame *input_frame) {
-    AVPacket *output_packet = av_packet_alloc();
-    if (!output_packet) { cout << "could not allocate memory for output packet" << endl; return -1;}
 
     ret = avcodec_send_frame(enc_ctx, input_frame);
 
@@ -191,8 +189,6 @@ int Streamer::encodeVideo(AVFrame *input_frame) {
         ret = av_interleaved_write_frame(ofmt_ctx, output_packet);
         if (ret < 0) { cout << "Error while writing packet"  << ret << endl; return ret;}
     }
-    av_packet_unref(output_packet);
-    av_packet_free(&output_packet);
     return 0;
 }
 

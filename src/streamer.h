@@ -38,6 +38,7 @@ private:
   AVCodec *encoder = NULL;
   AVCodec *decoder = NULL;
   AVPacket pkt;
+  AVPacket output_packet;
 
   int ret;
 
