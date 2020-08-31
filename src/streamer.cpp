@@ -30,13 +30,13 @@ int Streamer::setupInput(const char *_videoFileName)
 {
     if ((ret = avformat_open_input(&ifmt_ctx, _videoFileName, NULL, NULL)) < 0)
     {
-        cerr << "Could not open input file." << endl;
+        cout << "Could not open input file." << endl;
         return -1;
     }
 
     if ((ret = avformat_find_stream_info(ifmt_ctx, NULL)) < 0)
     {
-        cerr << "Failed to retrieve input stream information" << endl;
+        cout << "Failed to retrieve input stream information" << endl;
         return -1;
     }
 
@@ -55,16 +55,17 @@ int Streamer::setupInput(const char *_videoFileName)
 
 int Streamer::setupOutput(const char *_rtmpServerAdress)
 {
-    avformat_alloc_output_context2(&ofmt_ctx, NULL, "h264", _rtmpServerAdress); //RTMP
+    avformat_alloc_output_context2(&ofmt_ctx, NULL, "flv", _rtmpServerAdress); //RTMP
     if (!ofmt_ctx)
     {
-        cerr << "Could not create output context" << endl;
+        cout << "Could not create output context" << endl;
         ret = AVERROR_UNKNOWN;
         return -1;
     }
 
 
     ofmt = ofmt_ctx->oformat;
+    ofmt->video_codec = AV_CODEC_ID_H264;
     for (int i = 0; i < ifmt_ctx->nb_streams; i++)
     {
         if (i != videoIndex) continue;
@@ -73,7 +74,7 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
         AVStream *out_stream = avformat_new_stream(ofmt_ctx, NULL);
         if (!out_stream)
         {
-            cerr << "Failed allocating output stream" << endl;
+            cout << "Failed allocating output stream" << endl;
             ret = AVERROR_UNKNOWN;
             return -1;
         }
@@ -90,7 +91,7 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
 
         decoder = avcodec_find_decoder(dec_ctx->codec_id);
         if (!decoder) {
-            cerr << "Decoder not found " << endl;
+            cout << "Decoder not found " << endl;
             return -1;
         }
 
@@ -99,7 +100,7 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
         //encoder = avcodec_find_encoder(dec_ctx->codec_id);//AV_CODEC_ID_H264);
         encoder = avcodec_find_encoder_by_name("libx264");
         if (!encoder) {
-            cerr << "Encoder not found " << endl;
+            cout << "Encoder not found " << endl;
             return -1;
         }
 
@@ -127,7 +128,7 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
 
         ret = avcodec_open2(dec_ctx, decoder, NULL);
         if (ret < 0) {
-            cerr << "Failed to open decoder" << endl;
+            cout << "Failed to open decoder" << endl;
             return ret;
         }
 
@@ -137,7 +138,7 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
 
         ret = avcodec_open2(enc_ctx, encoder, &opts);
         if (ret < 0) {
-            cerr << "Failed to open encoder" << endl;
+            cout << "Failed to open encoder" << endl;
             return ret;
         }
     }
@@ -155,7 +156,7 @@ int Streamer::setupScaling()
                              SWS_BILINEAR, NULL, NULL, NULL);
 
     if (!sws_ctx) {
-        cerr << "Could not create scaling context." << endl;
+        cout << "Could not create scaling context." << endl;
         return -1;
     }
 
@@ -164,10 +165,8 @@ int Streamer::setupScaling()
 }
 
 int Streamer::encodeVideo(AVFrame *input_frame) {
-    if (input_frame) input_frame->pict_type = AV_PICTURE_TYPE_NONE;
-
     AVPacket *output_packet = av_packet_alloc();
-    if (!output_packet) { cerr << "could not allocate memory for output packet" << endl; return -1;}
+    if (!output_packet) { cout << "could not allocate memory for output packet" << endl; return -1;}
 
     ret = avcodec_send_frame(enc_ctx, input_frame);
 
@@ -179,20 +178,20 @@ int Streamer::encodeVideo(AVFrame *input_frame) {
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
         break;
         } else if (ret < 0) {
-        cerr << "Error while receiving packet from encoder: " << ret << endl;
+        cout << "Error while receiving packet from encoder: " << ret << endl;
         return -1;
         }
 
         output_packet->stream_index = videoIndex;
         //output_packet->duration = out_stream->time_base.den / out_stream->time_base.num / 
         //    in_stream->avg_frame_rate.num * in_stream->avg_frame_rate.den;
-        output_packet->pts = pkt.pts;
-        output_packet->dts = pkt.dts;
-        output_packet->duration = pkt.duration;
-
-        av_packet_rescale_ts(output_packet, in_stream->time_base, out_stream->time_base);
+        output_packet->pts = outIndex++;//pkt.pts;
+        output_packet->dts = output_packet->pts;//pkt.dts;
+        output_packet->duration = 1;//pkt.duration;
+cout << "output index" << outIndex << endl;
+        //av_packet_rescale_ts(output_packet, in_stream->time_base, out_stream->time_base);
         ret = av_interleaved_write_frame(ofmt_ctx, output_packet);
-        if (ret != 0) { cerr << "Error %d while receiving packet from decoder: "  << ret << endl; return -1;}
+        if (ret < 0) { cout << "Error while writing packet"  << ret << endl; return ret;}
     }
     av_packet_unref(output_packet);
     av_packet_free(&output_packet);
@@ -205,7 +204,7 @@ int Streamer::Stream()
     ret = avio_open(&ofmt_ctx->pb, rtmpServerAdress, AVIO_FLAG_WRITE);
     if (ret < 0)
     {
-        cerr << "Could not open output URL " << rtmpServerAdress << endl;
+        cout << "Could not open output URL " << rtmpServerAdress << endl;
         return -1;
     }
 
@@ -227,12 +226,14 @@ int Streamer::Stream()
     AVRational dst_frame_rate = {dst_fps, 1};
     out_stream->time_base = dst_time_base;
     out_stream->avg_frame_rate = dst_frame_rate;
+    avcodec_parameters_from_context(out_stream->codecpar, enc_ctx);
+    out_stream->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
 
     // Write file header
     ret = avformat_write_header(ofmt_ctx, NULL);
     if (ret < 0)
     {
-        cerr << "Error occurred when opening output URL" << endl;
+        cout << "Error occurred when opening output URL" << endl;
         return -1;
     }
 
@@ -244,7 +245,6 @@ int Streamer::Stream()
             cout << "end of stream" << endl;
             break;
         }
-
 	    if (pkt.stream_index != videoIndex) continue;
 
         if (pkt.pts == AV_NOPTS_VALUE)
@@ -261,12 +261,12 @@ int Streamer::Stream()
         // pkt.pts = av_rescale_q_rnd(pkt.pts, in_stream->time_base, out_stream->time_base, (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
         // pkt.dts = av_rescale_q_rnd(pkt.dts, in_stream->time_base, out_stream->time_base, (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
         // pkt.duration = av_rescale_q(pkt.duration, in_stream->time_base, out_stream->time_base);
-        pkt.pos = -1;
+        //pkt.pos = -1;
         frameIndex++;
-
+cout << "frame" << frameIndex << endl;
         ret = avcodec_send_packet(dec_ctx, &pkt);
         if (ret < 0) {
-            cerr << "Error while sending packet to decoder:" << ret << endl;
+            cout << "Error while sending packet to decoder:" << ret << endl;
             return ret;
         }
 
@@ -274,19 +274,19 @@ int Streamer::Stream()
             ret = avcodec_receive_frame(dec_ctx, frame);
             if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
             else if (ret < 0) {
-                cerr << "Error while receiving frame from decoder:" << ret << endl;
+                cout << "Error while receiving frame from decoder:" << ret << endl;
                 return ret;
             }
-            
             ret = sws_scale(sws_ctx, frame->data, frame->linesize, 
                         0, src_h, frame2->data, frame2->linesize);
 
             if (ret < 0) {
-                cerr << "Error while scaling a frame:" << ret << endl;
+                cout << "Error while scaling a frame:" << ret << endl;
                 return ret;
             }
 
-            encodeVideo(frame2);
+            ret = encodeVideo(frame2);
+            if (ret < 0) {cout << "error\n"; return -1; };
         }
         
         // if (pkt.pts == AV_NOPTS_VALUE)
@@ -327,6 +327,7 @@ int Streamer::Stream()
         // av_free_packet(&pkt);
     }
 
+    cout << ret << endl;
     //Write file trailer
     av_write_trailer(ofmt_ctx);
     avformat_close_input(&ifmt_ctx);

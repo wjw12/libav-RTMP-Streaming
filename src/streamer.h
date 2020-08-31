@@ -47,6 +47,7 @@ private:
 
   int videoIndex = -1;
   int frameIndex = 0;
+  int outIndex = 0;
   int64_t startTime = 0;
 
   enum AVPixelFormat src_pix_fmt;
