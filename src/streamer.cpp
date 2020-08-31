@@ -241,8 +241,11 @@ int Streamer::Stream()
         ret = av_read_frame(ifmt_ctx, &pkt);
         if (ret < 0) {
             avio_seek(ifmt_ctx->pb, 0, SEEK_SET);
-	        avformat_seek_file(ifmt_ctx, videoIndex, 0, 0, in_stream->duration, 0);
+	    if (avformat_seek_file(ifmt_ctx, videoIndex, 0, 0, 1, AVSEEK_FLAG_ANY) < 0) {
+		cout << "Failed in seek_file" << endl;
+	    }
             cout << "loop stream" << endl;
+            av_free_packet(&pkt);
             continue;
         }
 	    if (pkt.stream_index != videoIndex) continue;
@@ -286,12 +289,7 @@ int Streamer::Stream()
 
             ret = encodeVideo(frame2);
             if (ret < 0) {cout << "Error while encoding\n"; return -1; };
-
-            av_freep(&frame2->data[0]);
-            av_frame_unref(frame2);
         }
-            av_freep(&frame->data[0]);
-            av_frame_unref(frame);
         
         // if (pkt.pts == AV_NOPTS_VALUE)
         // {
@@ -328,7 +326,7 @@ int Streamer::Stream()
         // //ret = av_write_frame(ofmt_ctx, &pkt);
         // ret = av_interleaved_write_frame(ofmt_ctx, &pkt);
 
-        // av_free_packet(&pkt);
+        av_free_packet(&pkt);
     }
 
     cout << ret << endl;
