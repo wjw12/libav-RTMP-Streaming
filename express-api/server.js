@@ -21,7 +21,7 @@ app.post('/stream', (req, res) => {
 
   // launch process
   //exec('./libav-RTMP-Streaming/build/streamer', {env: {SRC: url, DST: 'rtmp://127.0.0.1/live/' + name }},
-  exec('cd /files && make build && docker run -e SRC=' + url + ' -e DST=rtmp://127.0.0.1/live/' + name + ' leandromoreira/ffmpeg-devel /files/build/streamer',
+  exec('cd /files && make build && docker run --name streamer -w /files --rm -t -v `pwd`:/files -e SRC=' + url + ' -e DST=rtmp://127.0.0.1/live/' + name + ' leandromoreira/ffmpeg-devel /files/build/streamer',
   (err, stdout, stderr) => {
     if (err) {console.log(`error: ${err.message}`); res.status(400).send({"success": false, "msg": err.message}); return;}
     if (stderr) {console.log(`stderr: ${stderr}`); res.status(400).send({"success": false, "msg": stderr}); return;}

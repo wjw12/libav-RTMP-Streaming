@@ -12,3 +12,5 @@ services:
       - ./libav-RTMP-Streaming:/files
     environment:
       - HOST_STREAMING=stream.jiewen.wang
+    tty: true
+    stdin_open: true
