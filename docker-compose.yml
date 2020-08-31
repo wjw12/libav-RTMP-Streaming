@@ -9,8 +9,11 @@ services:
       - "81:80"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./libav-RTMP-Streaming:/files
     environment:
       - HOST_STREAMING=stream.jiewen.wang
-    tty: true
-    stdin_open: true
+  streamer:
+    build:
+      context: ./libav-RTMP-Streaming
+    image: streamer:latest
+    volumes:
+      - ./libav-RTMP-Streaming:/files
