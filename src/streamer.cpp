@@ -163,7 +163,6 @@ int Streamer::setupScaling()
 }
 
 int Streamer::encodeVideo(AVFrame *input_frame) {
-    AVPacket *output_packet = av_packet_alloc();
     if (!output_packet) { cout << "could not allocate memory for output packet" << endl; return -1;}
 
     ret = avcodec_send_frame(enc_ctx, input_frame);
@@ -172,6 +171,7 @@ int Streamer::encodeVideo(AVFrame *input_frame) {
     AVStream * out_stream = ofmt_ctx->streams[videoIndex];
 
     while (ret >= 0) {
+        AVPacket *output_packet = av_packet_alloc();
         ret = avcodec_receive_packet(enc_ctx, output_packet);
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
             break;
@@ -190,9 +190,9 @@ int Streamer::encodeVideo(AVFrame *input_frame) {
         av_packet_rescale_ts(output_packet, dst_time_base, out_stream->time_base);
         ret = av_interleaved_write_frame(ofmt_ctx, output_packet);
         if (ret < 0) { cout << "Error while writing packet"  << ret << endl; return ret;}
+        av_packet_unref(output_packet);
+        av_packet_free(&output_packet);
     }
-    av_packet_unref(output_packet);
-    av_packet_free(&output_packet);
     return 0;
 }
 
@@ -242,7 +242,7 @@ int Streamer::Stream()
         ret = av_read_frame(ifmt_ctx, &pkt);
         if (ret < 0) {
             avio_seek(ifmt_ctx->pb, 0, SEEK_SET);
-	    avformat_seek_file(ifmt_ctx, videoIndex, 0, 0, in_stream->duration, 0);
+	        avformat_seek_file(ifmt_ctx, videoIndex, 0, 0, in_stream->duration, 0);
             cout << "loop stream" << endl;
             continue;
         }
@@ -287,7 +287,12 @@ int Streamer::Stream()
 
             ret = encodeVideo(frame2);
             if (ret < 0) {cout << "Error while encoding\n"; return -1; };
+
+            av_freep(&frame2->data[0]);
+            av_frame_unref(frame2);
         }
+            av_freep(&frame->data[0]);
+            av_frame_unref(frame);
         
         // if (pkt.pts == AV_NOPTS_VALUE)
         // {
