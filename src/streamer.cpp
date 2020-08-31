@@ -82,7 +82,7 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
         dec_ctx = in_stream->codec;
         enc_ctx = out_stream->codec;
 
-        enc_ctx->codec_id = dec_ctx->codec_id;//AV_CODEC_ID_H264;
+        enc_ctx->codec_id = AV_CODEC_ID_H264;
         enc_ctx->codec_type = AVMEDIA_TYPE_VIDEO;
         enc_ctx->qmin = 1;
         enc_ctx->qmax = 41;
@@ -133,7 +133,7 @@ int Streamer::setupOutput(const char *_rtmpServerAdress)
         }
 
         AVDictionary *opts = NULL;
-        av_dict_set(&opts, "preset", "medium", 0);
+        av_dict_set(&opts, "preset", "ultrafast", 0);
         av_dict_set(&opts, "x264-params", "keyint=60:min-keyint=60:scenecut=0:force-cfr=1", 0);
 
         ret = avcodec_open2(enc_ctx, encoder, &opts);
@@ -176,10 +176,10 @@ int Streamer::encodeVideo(AVFrame *input_frame) {
     while (ret >= 0) {
         ret = avcodec_receive_packet(enc_ctx, output_packet);
         if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-        break;
+            break;
         } else if (ret < 0) {
-        cout << "Error while receiving packet from encoder: " << ret << endl;
-        return -1;
+            cout << "Error while receiving packet from encoder: " << ret << endl;
+            return -1;
         }
 
         output_packet->stream_index = videoIndex;
@@ -189,7 +189,8 @@ int Streamer::encodeVideo(AVFrame *input_frame) {
         output_packet->dts = output_packet->pts;//pkt.dts;
         output_packet->duration = 1;//pkt.duration;
 cout << "output index" << outIndex << endl;
-        //av_packet_rescale_ts(output_packet, in_stream->time_base, out_stream->time_base);
+        AVRational dst_time_base = {1, dst_fps};
+        av_packet_rescale_ts(output_packet, dst_time_base, out_stream->time_base);
         ret = av_interleaved_write_frame(ofmt_ctx, output_packet);
         if (ret < 0) { cout << "Error while writing packet"  << ret << endl; return ret;}
     }
@@ -226,7 +227,7 @@ int Streamer::Stream()
     AVRational dst_frame_rate = {dst_fps, 1};
     out_stream->time_base = dst_time_base;
     out_stream->avg_frame_rate = dst_frame_rate;
-    avcodec_parameters_from_context(out_stream->codecpar, enc_ctx);
+    out_stream->r_frame_rate = dst_frame_rate;
     out_stream->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
 
     // Write file header
@@ -286,7 +287,7 @@ cout << "frame" << frameIndex << endl;
             }
 
             ret = encodeVideo(frame2);
-            if (ret < 0) {cout << "error\n"; return -1; };
+            if (ret < 0) {cout << "Error while encoding\n"; return -1; };
         }
         
         // if (pkt.pts == AV_NOPTS_VALUE)
