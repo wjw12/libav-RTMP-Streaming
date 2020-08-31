@@ -163,7 +163,6 @@ int Streamer::setupScaling()
 }
 
 int Streamer::encodeVideo(AVFrame *input_frame) {
-    if (!output_packet) { cout << "could not allocate memory for output packet" << endl; return -1;}
 
     ret = avcodec_send_frame(enc_ctx, input_frame);
 
