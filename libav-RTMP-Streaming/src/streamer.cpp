@@ -180,12 +180,21 @@ int Streamer::encodeVideo(AVFrame *input_frame) {
         output_packet->duration = 1;//pkt.duration;
         AVRational dst_time_base = {1, dst_fps};
         av_packet_rescale_ts(output_packet, dst_time_base, out_stream->time_base);
+
+	// copy the output packet
+	AVPacket *out2 = av_packet_alloc();
+	av_copy_packet(out2, output_packet);
+	av_copy_packet_side_data(out2, output_packet);
+
         ret = av_interleaved_write_frame(ofmt_ctx, output_packet);
         if (ret < 0) { cout << "Error while writing packet"  << ret << endl; return ret;}
-        ret = av_interleaved_write_frame(ofmt_ctx2, output_packet);
+        ret = av_interleaved_write_frame(ofmt_ctx2, out2);
         if (ret < 0) { cout << "Error while writing packet"  << ret << endl; return ret;}
+
         av_packet_unref(output_packet);
         av_packet_free(&output_packet);
+	av_packet_unref(out2);
+	av_packet_free(&out2);
     }
     return 0;
 }
@@ -244,7 +253,7 @@ int Streamer::Stream()
         if (ret < 0) {
             avio_seek(ifmt_ctx->pb, 0, SEEK_SET);
 	        if (avformat_seek_file(ifmt_ctx, videoIndex, 0, 0, 1, AVSEEK_FLAG_ANY) < 0) { cout << "Failed in avformat_seek_file" << endl; }
-            cout << "loop stream" << endl;
+            // cout << "loop stream" << endl;
             av_free_packet(&pkt);
             continue;
         }

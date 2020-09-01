@@ -9,5 +9,5 @@ build: clean
 
 run: build
 	docker run -e SRC="https://m-test-public.s3-us-west-2.amazonaws.com/challenge/example.webm" \
-	  -e RTMP="rtmp://127.0.0.1/live/example" -e RTSP="rtsp://127.0.0.1:8554/example" \
+	  -e RTMP="rtmp://127.0.0.1/live/exam" -e RTSP="rtsp://127.0.0.1:8554/exam" \
 	  -w /files --rm --network host -it -v `pwd`:/files libav-streaming /files/build/streamer 
