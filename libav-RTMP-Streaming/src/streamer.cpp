@@ -76,10 +76,6 @@ int Streamer::setupOutput(const char *_rtmpServerAddress, const char *_rtspServe
         if (!out_stream2) { cout << "Failed allocating output stream" << endl; ret = AVERROR_UNKNOWN; return -1; }
 
         if (i != videoIndex) {
-            // just copy, if not video
-            ret = avcodec_copy_context(out_stream->codec, in_stream->codec);
-            ret = avcodec_copy_context(out_stream2->codec, in_stream->codec);
-            if (ret < 0) { cout << "Failed to copy context" << endl; return -1;}
             continue;
         }
 
@@ -262,17 +258,6 @@ int Streamer::Stream()
         }
 
 	    if (pkt.stream_index != videoIndex) {
-            AVStream *in_strm = ifmt_ctx->streams[pkt.stream_index];
-            AVStream *out_strm = ofmt_ctx->streams[pkt.stream_index];
-            AVStream *out_strm2 = ofmt_ctx2->streams[pkt.stream_index];
-            pkt.pts = av_rescale_q_rnd(pkt.pts, in_strm->time_base, out_strm->time_base, (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
-            pkt.dts = av_rescale_q_rnd(pkt.dts, in_strm->time_base, out_strm->time_base, (AVRounding)(AV_ROUND_NEAR_INF | AV_ROUND_PASS_MINMAX));
-            pkt.duration = av_rescale_q(pkt.duration, in_strm->time_base, out_strm->time_base);
-            pkt.pos = -1;
-            ret = av_interleaved_write_frame(ofmt_ctx, &pkt);
-            if (ret < 0) { cout << "Error while writing non-video packet" << ret << endl; return ret;}
-            ret = av_interleaved_write_frame(ofmt_ctx2, &pkt);
-            if (ret < 0) { cout << "Error while writing non-video packet" << ret << endl; return ret;}
             av_free_packet(&pkt);
             continue;
         }
