@@ -21,6 +21,7 @@ services:
       - HOST_STREAMING=stream.jiewen.wang
   streamer:
     build:
-      context: ./libav-RTMP-Streaming
+      context: ./libav-streaming
     volumes:
-      - ./libav-RTMP-Streaming:/files
+      - ./libav-streaming:/files
+    image: libav-streaming:latest
