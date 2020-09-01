@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <chrono>
+#include <vector>
 
 extern "C"
 {
@@ -19,33 +20,37 @@ class Streamer
 {
 public:
   Streamer(const char *videoFileName,
-           const char *rtmpServerAdress);
+           const char *rtmpServerAddress);
   ~Streamer();
   int Stream();
 
 
 private:
   int setupInput(const char *videoFileName);
-  int setupOutput(const char *rtmpServerAdress);
+  int setupOutput(const char *rtmpServerAddress, const char *rtspServerAddress);
   int setupScaling();
   int encodeVideo(AVFrame *inputFrame);
 
   AVOutputFormat *ofmt = NULL;
+  AVOutputFormat *ofmt2 = NULL;
   AVFormatContext *ifmt_ctx = NULL;
-  AVFormatContext *ofmt_ctx = NULL;
+  AVFormatContext *ofmt_ctx = NULL; // RTMP
+  AVFormatContext *ofmt_ctx2 = NULL; // RTSP
   AVCodecContext *dec_ctx = NULL;
-  AVCodecContext *enc_ctx = NULL;
+  AVCodecContext *enc_ctx = NULL; // RTMP
+  AVCodecContext *enc_ctx2 = NULL; // RTSP
   AVCodec *encoder = NULL;
   AVCodec *decoder = NULL;
   AVPacket pkt;
 
   int ret;
 
-  // Input file and RTMP server address
   const char *videoFileName;
-  const char *rtmpServerAdress;
+  const char *rtmpServerAddress;
+  const char *rtspServerAddress;
 
   int videoIndex = -1;
+  std::vector<int> otherMediaIndices;
   int frameIndex = 0;
   int outIndex = 0;
   int64_t startTime = 0;
@@ -56,10 +61,6 @@ private:
   int dst_w = 420;
   int dst_fps = 25;
   struct SwsContext *sws_ctx;
-
-  // uint8_t *src_data[4], *dst_data[4];
-  // int src_linesize[4], dst_linesize[4];
-  // int dst_bufsize;
 };
 
 #endif

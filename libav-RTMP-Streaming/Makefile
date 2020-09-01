@@ -8,4 +8,6 @@ build: clean
 	  -o /files/build/streamer
 
 run: build
-	docker run -e SRC="https://m-test-public.s3-us-west-2.amazonaws.com/challenge/example.webm" -e DST="rtmp://localhost/live/example" -w /files --rm --network host -it -v `pwd`:/files leandromoreira/ffmpeg-devel /files/build/streamer 
+	docker run -e SRC="https://m-test-public.s3-us-west-2.amazonaws.com/challenge/example.webm" \
+	  -e RTMP="rtmp://localhost/live/example" -e RTSP="rtsp://localhost/live/example" \
+	  -w /files --rm --network host -it -v `pwd`:/files leandromoreira/ffmpeg-devel /files/build/streamer 
