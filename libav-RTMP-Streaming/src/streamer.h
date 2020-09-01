@@ -20,7 +20,8 @@ class Streamer
 {
 public:
   Streamer(const char *videoFileName,
-           const char *rtmpServerAddress);
+           const char *rtmpServerAddress,
+           const char *rtspServerAddress);
   ~Streamer();
   int Stream();
 
@@ -40,6 +41,7 @@ private:
   AVCodecContext *enc_ctx = NULL; // RTMP
   AVCodecContext *enc_ctx2 = NULL; // RTSP
   AVCodec *encoder = NULL;
+  AVCodec *encoder2 = NULL;
   AVCodec *decoder = NULL;
   AVPacket pkt;
 

@@ -7,6 +7,7 @@ Streamer::Streamer(const char *_videoFileName,
                    const char *_rtspServerAddress) : videoFileName(_videoFileName),
                     rtmpServerAddress(_rtmpServerAddress), rtspServerAddress(_rtspServerAddress)
 {
+    avcodec_register_all();
     av_register_all();
     avformat_network_init();
 
@@ -58,7 +59,7 @@ int Streamer::setupOutput(const char *_rtmpServerAddress, const char *_rtspServe
     avformat_alloc_output_context2(&ofmt_ctx, NULL, "flv", _rtmpServerAddress); //RTMP
     if (!ofmt_ctx) { cout << "Could not create output context" << endl; ret = AVERROR_UNKNOWN; return -1;}
 
-    avformat_alloc_output_context2(&ofmt_ctx2, NULL, "flv", _rtspServerAddress); //RTMP
+    avformat_alloc_output_context2(&ofmt_ctx2, NULL, "rtsp", _rtspServerAddress); //RTSP
     if (!ofmt_ctx2) { cout << "Could not create output context" << endl; ret = AVERROR_UNKNOWN; return -1;}
 
     ofmt = ofmt_ctx->oformat;
@@ -98,8 +99,9 @@ int Streamer::setupOutput(const char *_rtmpServerAddress, const char *_rtspServe
 
         ret = avcodec_parameters_to_context(dec_ctx, in_stream->codecpar);
 
-        //encoder = avcodec_find_encoder(dec_ctx->codec_id);//AV_CODEC_ID_H264);
         encoder = avcodec_find_encoder_by_name("libx264");
+        if (!encoder) { cout << "Encoder not found " << endl; return -1;}
+	encoder2 = avcodec_find_encoder_by_name("libx264");
         if (!encoder) { cout << "Encoder not found " << endl; return -1;}
 
         // set output properties
@@ -136,6 +138,10 @@ int Streamer::setupOutput(const char *_rtmpServerAddress, const char *_rtspServe
 
         ret = avcodec_open2(enc_ctx, encoder, &opts);
         if (ret < 0) { cout << "Failed to open encoder" << endl; return ret; }
+
+        ret = avcodec_open2(enc_ctx2, encoder2, &opts);
+        if (ret < 0) { cout << "Failed to open encoder" << endl; return ret; }
+
     }
     av_dump_format(ofmt_ctx, 0, _rtmpServerAddress, 1);
     av_dump_format(ofmt_ctx2, 0, _rtspServerAddress, 1);
@@ -159,6 +165,8 @@ int Streamer::setupScaling()
 int Streamer::encodeVideo(AVFrame *input_frame) {
 
     ret = avcodec_send_frame(enc_ctx, input_frame);
+
+    AVStream *out_stream = ofmt_ctx->streams[videoIndex];
 
     while (ret >= 0) {
         AVPacket *output_packet = av_packet_alloc();
@@ -188,12 +196,15 @@ int Streamer::encodeVideo(AVFrame *input_frame) {
 
 int Streamer::Stream()
 {
+    //AVDictionary *opts = NULL;
+    //av_dict_set(&opts, "rtsp_transport", "tcp", 0);
+    //ret = avio_open2(&ofmt_ctx2->pb, rtspServerAddress, AVIO_FLAG_WRITE, NULL, &opts);
+    //if (ret < 0){ cout << "Could not open output URL " << rtspServerAddress << endl; return -1; }
+
+
     // Open output URL
     ret = avio_open(&ofmt_ctx->pb, rtmpServerAddress, AVIO_FLAG_WRITE);
     if (ret < 0){ cout << "Could not open output URL " << rtmpServerAddress << endl; return -1; }
-    ret = avio_open(&ofmt_ctx2->pb, rtspServerAddress, AVIO_FLAG_WRITE);
-    if (ret < 0){ cout << "Could not open output URL " << rtspServerAddress << endl; return -1; }
-
     AVFrame *frame = av_frame_alloc();
     AVFrame *frame2 = av_frame_alloc();
 
@@ -221,7 +232,13 @@ int Streamer::Stream()
     // Write file header
     ret = avformat_write_header(ofmt_ctx, NULL);
     if (ret < 0) { cout << "Could not write header" << endl; return -1; }
-    ret = avformat_write_header(ofmt_ctx2, NULL);
+
+    AVDictionary *opts = NULL;
+    av_dict_set(&opts, "f", "rtsp", 0);
+    av_dict_set(&opts, "rtsp_transport", "tcp", 0);
+    av_dict_set(&opts, "rtsp_flags", "prefer_tcp", 0);
+
+    ret = avformat_write_header(ofmt_ctx2, &opts);
     if (ret < 0) { cout << "Could not write header" << endl; return -1; }
 
     startTime = av_gettime();
