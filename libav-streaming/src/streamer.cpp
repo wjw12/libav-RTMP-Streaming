@@ -44,6 +44,7 @@ int Streamer::setupInput(const char *_videoFileName)
     {
         if (ifmt_ctx->streams[i]->codec->codec_type == AVMEDIA_TYPE_VIDEO) {
             videoIndex = i;
+            break;
         }
         else {
             otherMediaIndices.push_back(i);
@@ -69,15 +70,15 @@ int Streamer::setupOutput(const char *_rtmpServerAddress, const char *_rtspServe
 
     for (int i = 0; i < ifmt_ctx->nb_streams; i++)
     {
+        if (i != videoIndex) {
+            continue;
+        }
         AVStream *in_stream = ifmt_ctx->streams[i];
         AVStream *out_stream = avformat_new_stream(ofmt_ctx, NULL);
         if (!out_stream) { cout << "Failed allocating output stream" << endl; ret = AVERROR_UNKNOWN; return -1; }
         AVStream *out_stream2 = avformat_new_stream(ofmt_ctx2, NULL);
         if (!out_stream2) { cout << "Failed allocating output stream" << endl; ret = AVERROR_UNKNOWN; return -1; }
 
-        if (i != videoIndex) {
-            continue;
-        }
 
         dec_ctx = in_stream->codec;
         enc_ctx = out_stream->codec;
@@ -181,10 +182,10 @@ int Streamer::encodeVideo(AVFrame *input_frame) {
         AVRational dst_time_base = {1, dst_fps};
         av_packet_rescale_ts(output_packet, dst_time_base, out_stream->time_base);
 
-	// copy the output packet
-	AVPacket *out2 = av_packet_alloc();
-	av_copy_packet(out2, output_packet);
-	av_copy_packet_side_data(out2, output_packet);
+        // copy the output packet
+        AVPacket *out2 = av_packet_alloc();
+        av_copy_packet(out2, output_packet);
+        av_copy_packet_side_data(out2, output_packet);
 
         ret = av_interleaved_write_frame(ofmt_ctx, output_packet);
         if (ret < 0) { cout << "Error while writing packet"  << ret << endl; return ret;}
@@ -193,8 +194,8 @@ int Streamer::encodeVideo(AVFrame *input_frame) {
 
         av_packet_unref(output_packet);
         av_packet_free(&output_packet);
-	av_packet_unref(out2);
-	av_packet_free(&out2);
+        av_packet_unref(out2);
+        av_packet_free(&out2);
     }
     return 0;
 }
@@ -238,6 +239,7 @@ int Streamer::Stream()
     ret = avformat_write_header(ofmt_ctx, NULL);
     if (ret < 0) { cout << "Could not write header" << endl; return -1; }
 
+    // for RTSP, set transport protocal to TCP only
     AVDictionary *opts = NULL;
     av_dict_set(&opts, "f", "rtsp", 0);
     av_dict_set(&opts, "rtsp_transport", "tcp", 0);
@@ -254,7 +256,6 @@ int Streamer::Stream()
             avio_seek(ifmt_ctx->pb, 0, SEEK_SET);
 	        if (avformat_seek_file(ifmt_ctx, videoIndex, 0, 0, 1, AVSEEK_FLAG_ANY) < 0) { cout << "Failed in avformat_seek_file" << endl; }
             // cout << "loop stream" << endl;
-            av_free_packet(&pkt);
             continue;
         }
 
@@ -267,7 +268,6 @@ int Streamer::Stream()
         }
 
 	    if (pkt.stream_index != videoIndex) {
-            av_free_packet(&pkt);
             continue;
         }
 
