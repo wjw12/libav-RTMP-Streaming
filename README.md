@@ -34,18 +34,31 @@ Don't forget to allow port 80, 1935, 8554 through the firewall.
 
 ## Repository Structure
 📦streaming.jiewen.wang
+
  ┣ 📂express-api
+
  ┃ ┣ 📜Dockerfile
+
  ┃ ┣ 📜package.json
+
  ┃ ┗ 📜server.js
+
  ┣ 📂libav-streaming
+
  ┃ ┣ 📂src
+
  ┃ ┃ ┣ 📜main.cpp
+
  ┃ ┃ ┣ 📜streamer.cpp
+
  ┃ ┃ ┗ 📜streamer.h
+
  ┃ ┣ 📜Makefile
+
  ┃ ┣ 📜Dockerfile
+
  ┣ 📜docker-compose.yml
+ 
  ┣ 📜rtsp-simple-server.yml (this is RTSP server config file)
 
 ## Testing Commands
