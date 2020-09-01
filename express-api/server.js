@@ -24,7 +24,7 @@ app.post('/stream', (req, res) => {
   if (!name || !url) {res.status(400).send({"success": false}); return;}
   if (streams[name]) {res.status(200).send({"success": true}); return;}
   const containerName = uniqueNamesGenerator({ dictionaries: [adjectives, colors, animals] });
-  const docker = spawn('docker', ('run --name '+containerName+' --network host --rm -e SRC='+url+' -e RTMP=rtmp://127.0.0.1/live/'+name+' -e RTSP=rtsp://127.0.0.1/'+name+' libav-streaming:latest').split(' '));
+  const docker = spawn('docker', ('run --name '+containerName+' --network host --rm -e SRC='+url+' -e RTMP=rtmp://127.0.0.1/live/'+name+' -e RTSP=rtsp://127.0.0.1:8554/'+name+' libav-streaming:latest').split(' '));
   docker.stdout.on('data', (data) => { console.log(`stdout: ${data}`);});
   docker.stderr.on('data', (data) => {console.log(`stderr: ${data}`);});
   docker.on('close', (code) => {console.log(`child process exited with code ${code}`);});
